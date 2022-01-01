@@ -1,0 +1,70 @@
+units           real
+dimension       3
+boundary        p p f
+variable	pressure equal 0.0
+variable	temperature equal 300.0
+variable	srate equal 1.e9/1.e15
+atom_style      charge
+read_data       MoS.lammps
+pair_style      reax/c NULL
+pair_coeff      * * ffield_MoS2_ori Mo S O
+neighbor        2 bin
+neigh_modify    every 10 delay 0 check no
+group Mo type 1
+fix             1  all  nvt temp 1500 1500  25.0
+fix             2  all  qeq/reax  1  0.0  10.0  1e-6  reax/c
+fix             4  all wall/reflect zlo -5.0 zhi 25.0 units box
+fix             5  Mo spring/self 10.0
+compute         pe  all  pe/atom
+compute         ke  all  ke/atom
+compute csym all centro/atom 12
+compute 2 all stress/atom NULL virial
+compute mytemp all temp
+compute 11 all reduce sum c_2[1]
+compute 12 all reduce sum c_2[2]
+compute 13 all reduce sum c_2[3]
+compute 14 all reduce sum c_2[4]
+compute 15 all reduce sum c_2[5]
+compute 16 all reduce sum c_2[6]
+variable        temp atom c_ke/(0.0019872041*1.5)
+timestep        0.25
+thermo          100
+thermo_style    custom step pe ke etotal evdwl ecoul temp press vol density
+thermo_modify lost warn
+dump            1 all custom 1000 Oxidation.dump id type q x y z c_pe c_ke v_temp
+dump_modify     1 sort id 
+run           600000
+unfix 1
+undump 1
+reset_timestep	0
+fix             6  all  nvt temp 1500 300  25.0
+dump            1 all custom 1000 Cooling.dump id type q x y z c_pe c_ke v_temp
+dump_modify     1 sort id 
+run           600000
+unfix 6
+unfix 5
+undump 1
+reset_timestep	0
+fix             7  all  nvt temp 300 300  25.0
+dump            1 all custom 1000 Equilibriation.dump id type q x y z c_pe c_ke v_temp
+dump_modify     1 sort id 
+run           600000
+unfix 7
+undump 1
+variable        tmp equal ly
+variable        lx0 equal ${tmp}
+reset_timestep	0
+fix		10 all npt temp ${temperature} ${temperature} 20 x ${pressure} ${pressure} 20
+fix		20 all deform 1 y erate ${srate} units box remap x
+variable	strain equal "(ly-v_lx0)/v_lx0"
+variable	p1 equal v_strain
+variable	p2 equal "-(0.0001*pxx)"
+variable	p3 equal "-(0.0001*pyy)"
+variable	p4 equal "0.0001*pzz"
+variable    p7 equal "lz"
+fix		def1 all print 1000 "${p1}   ${p2}   ${p3}   ${p4}  ${p7}" file stress_strain.dat screen no
+dump		1 all custom 1000 dump.tension id type x y z c_csym c_2[1] c_2[2] c_2[3] c_2[4] 
+thermo		100
+thermo_style	custom step temp lz v_p1 v_p2 v_p3 v_p4 ke pe press
+thermo_modify lost warn
+run	 1200000
